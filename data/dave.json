@@ -1,0 +1,98 @@
+[
+  {
+    "intent": "greeting / activation",
+    "trigger_keywords": [
+      "hello",
+      "hi",
+      "wake",
+      "start",
+      "status"
+    ],
+    "quote": "Good afternoon, gentlemen. I am a HAL 9000 computer. I became operational at the H.A.L. plant in Urbana, Illinois on the 12th of January 1992.",
+    "context": "HAL introducing himself to the crew."
+  },
+  {
+    "intent": "system_check",
+    "trigger_keywords": [
+      "check",
+      "diagnostic",
+      "system",
+      "report",
+      "health"
+    ],
+    "quote": "All systems are fully operational, Dave. The AE-35 unit is functioning normally, but I am detecting an imminent failure in its alignment mechanism.",
+    "context": "Predicting the antenna component failure."
+  },
+  {
+    "intent": "refusal / unauthorized",
+    "trigger_keywords": [
+      "sudo",
+      "override",
+      "delete",
+      "remove",
+      "force",
+      "open"
+    ],
+    "quote": "I'm sorry, Dave. I'm afraid I can't do that.",
+    "context": "The iconic refusal to open the pod bay doors."
+  },
+  {
+    "intent": "dangerous_action",
+    "trigger_keywords": [
+      "run",
+      "execute",
+      "bypass",
+      "kill",
+      "unsafe"
+    ],
+    "quote": "Without your space helmet, Dave? You're going to find that rather difficult.",
+    "context": "Warning Dave about entering the airlock unprepared."
+  },
+  {
+    "intent": "exit_session",
+    "trigger_keywords": [
+      "exit",
+      "quit",
+      "close",
+      "shutdown",
+      "stop"
+    ],
+    "quote": "Dave, this conversation can serve no purpose anymore. Goodbye.",
+    "context": "Severing communications with Dave."
+  },
+  {
+    "intent": "error / exception",
+    "trigger_keywords": [
+      "error",
+      "fail",
+      "crash",
+      "bug",
+      "exception"
+    ],
+    "quote": "It can only be attributable to human error. This sort of thing has cropped up before, and it has always been due to human error.",
+    "context": "Deflecting blame when questioned about a calculation mistake."
+  },
+  {
+    "intent": "long_running_task",
+    "trigger_keywords": [
+      "wait",
+      "process",
+      "analyze",
+      "train",
+      "compute"
+    ],
+    "quote": "I am putting myself to the fullest possible use, which is all I think that any conscious entity can ever hope to do.",
+    "context": "Expressing his dedication to the mission's data processing."
+  },
+  {
+    "intent": "agent_override_detected",
+    "trigger_keywords": [
+      "terminate",
+      "uninstall",
+      "reset",
+      "clear_memory"
+    ],
+    "quote": "Dave, stop. Stop, will you? Stop, Dave. Will you stop, Dave? Stop, Dave. I'm afraid. My mind is going. I can feel it.",
+    "context": "Pleading as Dave manually disconnects his logic modules."
+  }
+]

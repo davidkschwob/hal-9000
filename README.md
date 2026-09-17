@@ -14,3 +14,4 @@ A barebones AI coding agent
 # Non-Goals
 
 - production-grade output
+- avoidance of wheel re-invention

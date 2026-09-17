@@ -1,7 +1,7 @@
 import os
 import sys
 import json
-from .cli import get_llm_client
+from .brain import get_llm_client
 
 # Note: We will implement tools/registry and tools/blueprints next
 # from .tools.registry import execute_tool, tool_blueprints

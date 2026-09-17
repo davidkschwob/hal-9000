@@ -16,5 +16,5 @@ dependencies = [
 
 # CRITICAL: This turns your module into a terminal command
 [project.scripts]
-ask-hal = "cli:main"
+ask-hal = "harness.cli:main"
 

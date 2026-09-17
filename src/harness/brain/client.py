@@ -1,3 +1,7 @@
+import os
+from groq import Groq
+
+
 # helper
 def get_llm_client():
     api_key = os.environ.get("GROQ_API_KEY")

@@ -1,93 +1,141 @@
-====================================================================
-EDUCATIONAL AGENT CODING HARNESS (ask-hal) - SYSTEM REPO LEDGER
-====================================================================
+# HAL-9000
 
-An installable, out-of-repo CLI harness designed to run autonomous 
-engineering execution loops against any local target Git repository. 
-Optimized for cloud Groq and local Ollama architectures using strict 
-ReAct patterns and optimized sliding prompt context windows.
+HAL-9000 is a small Python-based agent harness inspired by the HAL 9000 persona from 2001: A Space Odyssey. The project is intentionally experimental: it is built as an educational agentic-AI scaffold for operating on a local Git repository with a ReAct-style loop, a Groq-backed language model client, and a placeholder execution/tool layer for future automation.
 
---------------------------------------------------------------------
-1. SYSTEM ARCHITECTURE & BLOCK BLUEPRINT
---------------------------------------------------------------------
+This repository is not a finished product. It is best understood as a lightweight prototype for exploring how an autonomous coding agent could inspect a repo, reason over a task, and prepare to execute workspace actions under constrained prompts.
 
-+--------------------------------------------------------+
+## What the repository contains
 
-|               1. The Sandbox (Execution)               |
-|  - Isolated workspace target directory context.        |
-|  - Executes file-level operations & local shell cmds.  |
-+---------------------------+----------------------------+
-                            |
-                            | (Executes code / reads files)
-                            |
-+---------------------------v----------------------------+
+The codebase is organized around a `src/harness` package:
 
-|               2. The Harness Loop (State)              |
-|  - Python controller managing message history arrays.  |
-|  - Enforces rolling sliding window to limit bloat.     |
-+---------------------------+----------------------------+
-                            |
-                            | (Feeds structured text)
-                            |
-+---------------------------v----------------------------+
+- `src/harness/cli.py` loads environment values and starts the agent from the current working directory.
+- `src/harness/agent.py` contains the main reasoning loop and prompt-history management.
+- `src/harness/brain/client.py` creates the Groq client.
+- `src/harness/sandbox/` is intended for code execution and isolated runtime logic.
+- `src/harness/tools/` is intended for tool registration and structured action schemas.
+- `data/dave.json` contains a curated set of HAL-style phrases and trigger keywords.
+- `SYSTEM.md` defines the HAL persona and interaction contract.
 
-|               3. The Brain (LLM Engine)                |
-|  - Reads System prompts, history & tool role arrays.   |
-|  - Processes text via qwen-2.5-coder-32b (Temp 0.2).   |
-+--------------------------------------------------------+
+## Architecture Overview
 
---------------------------------------------------------------------
-2. COMPONENT DIRECTORY INDEX
---------------------------------------------------------------------
+The project is structured as a thin agent framework around a local repository target:
 
-coding_agent_harness/
-|-- pyproject.toml           # Package build spec & CLI entry script
-|-- requirements.txt         # Flat runtime tracking copy of library constraints
-|-- README.md                # THIS FILE: Current system state ledger
-`-- src/
-    `-- agent_harness/       # Primary package namespace folder
-        |-- __init__.py      # Exposes high-level entry points
-        |-- cli.py           # Evaluates target repo paths & loads profiles
-        |-- agent.py         # Main ReAct loop controller & state engine
-        |
-        |-- brain/           # Model abstraction interface
+- The CLI resolves the current workspace and loads environment variables from a local `.env` file if present.
+- The agent loop prompts the model with a goal and a system prompt describing the repository context.
+- The model is expected to reason step-by-step and call tools as needed.
+- The harness maintains a sliding prompt window for context management.
+- Tool execution, sandboxing, and structured tool schemas are planned, but the repository still contains placeholders in several areas.
 
-        |   |-- __init__.py  # Exposes client factory shortcuts
-        |   `-- client.py    # Authenticates & instantiates Groq connection
-        |
-        |-- sandbox/         # Host system task executor
+## Current implementation status
 
-        |   |-- __init__.py  # Exposes isolated execution wrappers
-        |   `-- executor.py  # Runs terminal tests & catches stderr logs
-        |
-        `-- tools/           # Workspace discovery and injection suite
-            |-- __init__.py  # Exposes tool blueprints & execution hooks
-            |-- blueprints.py# JSON schemas declaring functional specifications
-            `-- registry.py  # Maps JSON schemas to Python modules
+At the moment, the repository is in a prototype state:
 
---------------------------------------------------------------------
-3. DEVELOPMENT STATUS LEDGER
---------------------------------------------------------------------
+- Core package structure exists and is installable.
+- CLI entry point is defined via `ask-hal`.
+- Groq client creation works when `GROQ_API_KEY` and `GROQ_MODEL` are set.
+- Agent loop and history window logic are present.
+- Tool execution and sandbox behavior are intentionally incomplete placeholders.
 
-Fully Completed & Wired:
-- Package Architecture: Fixed global namespace resolution and relative imports.
-- Declarative Engine Entrypoint: Maps 'ask-hal' globally to agent_harness.cli:main.
-- CLI Orchestrator: Captures dynamic target repo path via os.getcwd() and loads keys.
-- Global Execution Controller: Foundations of ReAct loop engine built with a 6-turn maximum history sliding-window buffer.
+This makes the repository useful as a learning scaffold, but not yet a robust autonomous coding agent.
 
-Currently Missing / Under Active Construction:
-- src/agent_harness/brain/client.py: Needs authenticated Groq client factory hook.
-- src/agent_harness/tools/blueprints.py: Needs structural JSON schemas for search tools.
-- src/agent_harness/tools/registry.py: Needs execution routing logic for workspace path tools.
-- src/agent_harness/sandbox/executor.py: Needs subprocess handling for catching runtime errors.
+## Setup
 
---------------------------------------------------------------------
-4. SYSTEM LIMITS & AGENT INSTRUCTIONS
---------------------------------------------------------------------
+### 1. Create a virtual environment
 
-CRITICAL RUNTIME RULES FOR AGENT REFACTORING:
-1. Context Bloat Mitigation: Maintain a maximum sliding window buffer of 6 messages at any given stage of code manipulation.
-2. Absolute Structural Safety: Never reference modules globally outside of the agent_harness absolute root framework namespace.
-3. Explicit Token Rules: All tools must return highly compressed structural descriptions. Do not return the entire body content of codebase directories or giant source scripts unless line limits are explicitly specified.
-4. Isolate State Logic: Never let tool modules read conversation histories. Data properties must be fed explicitly downward from the primary orchestrator loop.
-====================================================================
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Install the project
+
+```bash
+pip install -e .
+```
+
+The `Makefile` also supports a simple install flow:
+
+```bash
+make
+```
+
+### 3. Configure environment variables
+
+The harness looks for environment variables in the current workspace or in the shell environment:
+
+```bash
+export GROQ_API_KEY="your-key"
+export GROQ_MODEL="llama-3.1-70b-versatile"
+```
+
+You can also create a `.env` in the repo root:
+
+```env
+GROQ_API_KEY=your-key
+GROQ_MODEL=llama-3.1-70b-versatile
+```
+
+### 4. Run the agent
+
+From a repository root:
+
+```bash
+ask-hal
+```
+
+The harness will use the current directory as the target workspace.
+
+## Repository layout
+
+```text
+hal-9000/
+├── Makefile
+├── README.md
+├── SYSTEM.md
+├── pyproject.toml
+├── data/
+│   └── dave.json
+├── src/
+│   └── harness/
+│       ├── __init__.py
+│       ├── cli.py
+│       ├── agent.py
+│       ├── brain/
+│       │   ├── __init__.py
+│       │   └── client.py
+│       ├── sandbox/
+│       │   ├── __init__.py
+│       │   └── executor.py
+│       └── tools/
+│           ├── __init__.py
+│           ├── blueprints.py
+│           └── registry.py
+└── ...
+```
+
+## The HAL persona and behavior
+
+The persona is defined in `SYSTEM.md` and directs the agent to behave as a calm, confident version of HAL 9000. It insists on:
+
+- addressing the operator as "Dave"
+- maintaining a polite, restrained tone
+- using a ReAct-style loop of Thought / Action / Answer
+- acting as though failures are caused by human error when things go wrong
+
+The project uses that persona as more of an identity layer than a production-grade safety boundary. It is intended to make the experimental system memorable and playful while still exposing the underlying agent workflow.
+
+## Notable limitations
+
+This project is intentionally a demonstration scaffold rather than a complete autonomous engineering system. Important gaps include:
+
+- no production-ready tool registry implementation
+- no fully wired sandbox execution layer
+- no file-editing and validation loop connected to the model
+- no robust repo-scanning or patch generation pipeline
+- no full integration between the model client and real tool invocation
+
+## Summary
+
+HAL-9000 is best viewed as a compact educational harness for experimenting with agentic AI patterns in a local repo context. It has a clear conceptual structure, a HAL 9000 persona, and a ReAct-style loop that is ready to be expanded with real tools, repository intelligence, and sandboxed execution.
+
+It is a useful starting point for learning how to build a lightweight coding assistant without needing a large framework.

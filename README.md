@@ -1,141 +1,141 @@
 # HAL-9000
 
-HAL-9000 is a small Python-based agent harness inspired by the HAL 9000 persona from 2001: A Space Odyssey. The project is intentionally experimental: it is built as an educational agentic-AI scaffold for operating on a local Git repository with a ReAct-style loop, a Groq-backed language model client, and a placeholder execution/tool layer for future automation.
+HAL-9000 is an educational Python agent harness for experimenting with an LLM-driven coding assistant in a local Git repository.
 
-This repository is not a finished product. It is best understood as a lightweight prototype for exploring how an autonomous coding agent could inspect a repo, reason over a task, and prepare to execute workspace actions under constrained prompts.
+The project combines a Groq chat client, a bounded agent loop, a HAL-inspired system prompt, and an in-progress tool layer. It is a prototype rather than a production-ready autonomous coding agent.
 
-## What the repository contains
+## Status
 
-The codebase is organized around a `src/harness` package:
+The core harness is available, but tool execution is not wired into the agent yet.
 
-- `src/harness/cli.py` loads environment values and starts the agent from the current working directory.
-- `src/harness/agent.py` contains the main reasoning loop and prompt-history management.
-- `src/harness/brain/client.py` creates the Groq client.
-- `src/harness/sandbox/` is intended for code execution and isolated runtime logic.
-- `src/harness/tools/` is intended for tool registration and structured action schemas.
-- `data/dave.json` contains a curated set of HAL-style phrases and trigger keywords.
-- `SYSTEM.md` defines the HAL persona and interaction contract.
+| Area | Current state |
+| --- | --- |
+| Python package and CLI | Available through the `ask-hal` command |
+| LLM client | Groq client configured from environment variables |
+| Agent loop | Bounded to 15 iterations with a six-message history window |
+| Tool schemas | Planned in `tools/blueprints.py` |
+| Tool registry | Planned in `tools/registry.py` |
+| Sandbox execution | Scaffolded, not integrated |
+| File inspection and editing | Not yet implemented |
 
-## Architecture Overview
+## Requirements
 
-The project is structured as a thin agent framework around a local repository target:
+- Python 3.10 or later
+- A Groq API key
+- A Groq model name
 
-- The CLI resolves the current workspace and loads environment variables from a local `.env` file if present.
-- The agent loop prompts the model with a goal and a system prompt describing the repository context.
-- The model is expected to reason step-by-step and call tools as needed.
-- The harness maintains a sliding prompt window for context management.
-- Tool execution, sandboxing, and structured tool schemas are planned, but the repository still contains placeholders in several areas.
+## Installation
 
-## Current implementation status
-
-At the moment, the repository is in a prototype state:
-
-- Core package structure exists and is installable.
-- CLI entry point is defined via `ask-hal`.
-- Groq client creation works when `GROQ_API_KEY` and `GROQ_MODEL` are set.
-- Agent loop and history window logic are present.
-- Tool execution and sandbox behavior are intentionally incomplete placeholders.
-
-This makes the repository useful as a learning scaffold, but not yet a robust autonomous coding agent.
-
-## Setup
-
-### 1. Create a virtual environment
+Create and activate a virtual environment, then install the package in editable mode:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-```
-
-### 2. Install the project
-
-```bash
 pip install -e .
 ```
 
-The `Makefile` also supports a simple install flow:
+The included `Makefile` provides the shorter equivalent:
 
 ```bash
 make
 ```
 
-### 3. Configure environment variables
+## Configuration
 
-The harness looks for environment variables in the current workspace or in the shell environment:
-
-```bash
-export GROQ_API_KEY="your-key"
-export GROQ_MODEL="llama-3.1-70b-versatile"
-```
-
-You can also create a `.env` in the repo root:
+Set the required environment variables in your shell or in a `.env` file in the working directory:
 
 ```env
-GROQ_API_KEY=your-key
-GROQ_MODEL=llama-3.1-70b-versatile
+GROQ_API_KEY=your-api-key
+GROQ_MODEL=your-model-name
 ```
 
-### 4. Run the agent
+`GROQ_API_KEY` is used to create the Groq client. `GROQ_MODEL` is passed to the chat completion request. The application exits during startup when either value is missing.
 
-From a repository root:
+## Run HAL
+
+Run the command from the repository you want the harness to work with:
 
 ```bash
 ask-hal
 ```
 
-The harness will use the current directory as the target workspace.
+HAL prints the target workspace, asks for a coding goal, and sends the goal to the model. The current agent loop can display model output and recognize tool-call responses, but it returns a placeholder observation instead of executing a real tool.
+
+## How it works
+
+1. `harness.cli` resolves the current working directory and loads `.env` values.
+2. `harness.agent` initializes the LLM client and prompts for a development goal.
+3. The agent builds a system prompt containing the workspace path and operating rules.
+4. The loop sends the prompt to Groq for up to 15 iterations.
+5. Recent history is retained in a sliding six-message window.
+6. Tool calls are detected, but execution is currently mocked.
+
+The persona and response contract are documented in [`SYSTEM.md`](SYSTEM.md). The sample HAL phrases and trigger keywords are stored in [`data/dave.json`](data/dave.json).
+
+## Implementing the first real tool
+
+The next useful milestone is a read-only repository inspection tool. It would give the model a safe, testable capability before file mutation or shell execution is introduced.
+
+### Recommended sequence
+
+1. **Define a tool schema** in `src/harness/tools/blueprints.py`.
+   - Start with a tool such as `list_files` or `read_file`.
+   - Describe its name, purpose, and JSON arguments in the format expected by Groq tool calling.
+   - Constrain paths to the target workspace and define useful error responses.
+
+2. **Implement the function** in a dedicated module under `src/harness/tools/`.
+   - Accept the workspace path explicitly.
+   - Resolve paths safely and reject paths outside the workspace.
+   - Return bounded, serializable text rather than raw exceptions.
+
+3. **Register the function** in `src/harness/tools/registry.py`.
+   - Map the schema name to its Python implementation.
+   - Reject unknown tool names.
+   - Validate and parse JSON arguments before dispatch.
+
+4. **Wire the tool into `agent.py`.
+   - Replace `available_tools = []` with the exported tool schemas.
+   - Uncomment the `tools=available_tools` argument in the Groq request.
+   - Replace the `"Tool outputs placeholder."` value with `execute_tool(...)`.
+   - Preserve the tool-call ID when appending the observation to history.
+
+5. **Verify the execution loop.**
+   - Add unit tests for valid paths, invalid paths, missing arguments, and unknown tools.
+   - Test that a tool result is sent back to the model with the correct tool-call ID.
+   - Add an integration test using a fake client so tests do not require a live API key.
+
+After a read-only tool is reliable, add file editing and command execution separately. Each should have explicit safety rules, bounded output, clear failure messages, and tests before being exposed to the model.
 
 ## Repository layout
 
 ```text
 hal-9000/
-├── Makefile
-├── README.md
-├── SYSTEM.md
-├── pyproject.toml
 ├── data/
-│   └── dave.json
-├── src/
-│   └── harness/
-│       ├── __init__.py
-│       ├── cli.py
-│       ├── agent.py
-│       ├── brain/
-│       │   ├── __init__.py
-│       │   └── client.py
-│       ├── sandbox/
-│       │   ├── __init__.py
-│       │   └── executor.py
-│       └── tools/
-│           ├── __init__.py
-│           ├── blueprints.py
-│           └── registry.py
-└── ...
+│   └── dave.json              # HAL-style phrases and trigger keywords
+├── src/harness/
+│   ├── cli.py                 # Console entry point
+│   ├── agent.py               # Bounded LLM/ReAct-style loop
+│   ├── brain/
+│   │   └── client.py          # Groq client initialization
+│   ├── sandbox/
+│   │   └── executor.py        # Planned execution layer
+│   └── tools/
+│       ├── blueprints.py      # Planned tool schemas
+│       └── registry.py         # Planned tool dispatch
+├── SYSTEM.md                  # Persona and interaction rules
+├── Makefile
+├── pyproject.toml
+└── README.md
 ```
 
-## The HAL persona and behavior
+## Development notes
 
-The persona is defined in `SYSTEM.md` and directs the agent to behave as a calm, confident version of HAL 9000. It insists on:
+This project is intentionally small and framework-light. The current implementation is a foundation for learning about:
 
-- addressing the operator as "Dave"
-- maintaining a polite, restrained tone
-- using a ReAct-style loop of Thought / Action / Answer
-- acting as though failures are caused by human error when things go wrong
+- prompt construction and context windows
+- model tool calling
+- tool validation and dispatch
+- sandbox boundaries
+- testing agent workflows without depending on a live model
 
-The project uses that persona as more of an identity layer than a production-grade safety boundary. It is intended to make the experimental system memorable and playful while still exposing the underlying agent workflow.
-
-## Notable limitations
-
-This project is intentionally a demonstration scaffold rather than a complete autonomous engineering system. Important gaps include:
-
-- no production-ready tool registry implementation
-- no fully wired sandbox execution layer
-- no file-editing and validation loop connected to the model
-- no robust repo-scanning or patch generation pipeline
-- no full integration between the model client and real tool invocation
-
-## Summary
-
-HAL-9000 is best viewed as a compact educational harness for experimenting with agentic AI patterns in a local repo context. It has a clear conceptual structure, a HAL 9000 persona, and a ReAct-style loop that is ready to be expanded with real tools, repository intelligence, and sandboxed execution.
-
-It is a useful starting point for learning how to build a lightweight coding assistant without needing a large framework.
+Contributions should keep the execution boundary explicit and should not treat the HAL persona as a security mechanism.

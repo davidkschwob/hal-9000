@@ -12,6 +12,7 @@ tool_blueprints = [
                 "properties": {},
                 "additionalProperties": False,
             },
+            "strict": True
         },
     }
 ]

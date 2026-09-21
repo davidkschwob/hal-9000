@@ -14,6 +14,9 @@ dependencies = [
     "python-dotenv>=1.0.0"
 ]
 
+[tool.setuptools.package-data]
+harness = ["SYSTEM.md"]
+
 # CRITICAL: This turns your module into a terminal command
 [project.scripts]
 ask-hal = "harness.cli:main"

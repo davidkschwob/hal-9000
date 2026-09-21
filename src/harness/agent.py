@@ -1,20 +1,37 @@
 import json
 import os
 import sys
+import importlib.resources
 from pathlib import Path
 
 from .brain import get_llm_client
 from .tools import execute_tool, tool_blueprints
 
 
-def _load_system_prompt(workspace_path: str) -> str:
-    system_path = Path(workspace_path).resolve() / "SYSTEM.md"
+def _load_system_prompt() -> str:
     try:
-        return system_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise RuntimeError(f"Unable to load system prompt from {system_path}") from exc
+        ref = importlib.resources.files("harness").joinpath("SYSTEM.md")
+        system_md = ref.read_text(encoding="utf-8")
+        return system_md
+    except:
+        print(
+              "[WARN] SYSTEM.md not loaded from module resource path. "
+              "Defaulting to a generic prompt."
+              )
+        return(
+            "Your are a helpful coding agent. Inspect the target repository "
+            "carefully and explain failures clearly."
+            )
 
+def _serialize_message(message):
+    if hasattr(message,"model_dump"):
+        return message.model_dump(exclude_none=True)
+    if hasattr(message,"dict"):
+        return message.dict(exclude_none=True)
+    return message
+    
 
+    
 def agent_loop(workspace_path: str):
     """Run the bounded agent loop against the target workspace."""
     print(f"🤖 HAL-9000 Engine online. Target workspace: {workspace_path}")
@@ -23,15 +40,12 @@ def agent_loop(workspace_path: str):
 
     try:
         client = get_llm_client()
-        system_prompt = _load_system_prompt(workspace_path)
+        system_prompt = _load_system_prompt()
     except Exception as exc:
         print(f"❌ Initialization Error: {exc}")
         sys.exit(1)
 
-    goal = input("\nWhat coding goal should I execute in this repository?\n> ")
-    if not goal.strip():
-        print("Empty goal. Exiting loop.")
-        return
+    goal = input("[me]")
 
     full_history = []
     base_messages = [
@@ -66,9 +80,10 @@ def agent_loop(workspace_path: str):
             break
 
         assistant_message = response.choices[0].message
-        full_history.append(assistant_message)
+        full_history.append(_serialize_message(assistant_message))
+
         if assistant_message.content:
-            print(f"\n🤖 HAL Thought:\n{assistant_message.content}")
+            print(f"[hal] {assistant_message.content}")
 
         if getattr(assistant_message, "tool_calls", None):
             for tool_call in assistant_message.tool_calls:
@@ -90,8 +105,8 @@ def agent_loop(workspace_path: str):
                     }
                 )
         else:
-            print("\n🏁 Agent has halted execution loop (No further tools requested).")
-            is_running = False
+            print("[hal ] ...")
+            # is_running = False
 
     if iteration >= max_iterations:
         print("\n⚠️ Loop halted automatically: Reached maximum safety iteration depth.")

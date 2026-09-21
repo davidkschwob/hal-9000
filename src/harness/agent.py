@@ -37,6 +37,7 @@ def agent_loop(workspace_path: str):
     print(f"🤖 HAL-9000 Engine online. Target workspace: {workspace_path}")
 
     target_model = os.environ.get("GROQ_MODEL")
+    max_tokens = os.environ.get("GROQ_MAX_TOKENS")
 
     try:
         client = get_llm_client()
@@ -73,6 +74,7 @@ def agent_loop(workspace_path: str):
                 messages=active_prompt,
                 model=target_model,
                 tools=tool_blueprints,
+                max_tokens=512,
                 temperature=0.2,
             )
         except Exception as exc:

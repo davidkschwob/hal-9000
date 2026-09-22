@@ -6,17 +6,17 @@ The project combines a Groq chat client, a bounded agent loop, a HAL-inspired sy
 
 ## Status
 
-The core harness is available, but tool execution is not wired into the agent yet.
+The harness is working as a small, modular tool-enabled agent loop. Tool definitions are now organized under `src/harness/tools/` as independent modules rather than a single monolithic block.
 
 | Area | Current state |
 | --- | --- |
 | Python package and CLI | Available through the `ask-hal` command |
 | LLM client | Groq client configured from environment variables |
 | Agent loop | Bounded to 15 iterations with a six-message history window |
-| Tool schemas | Planned in `tools/blueprints.py` |
-| Tool registry | Planned in `tools/registry.py` |
+| Tool discovery | Modules under `src/harness/tools/` are auto-discovered via `__init__.py` |
+| Tool implementations | Split into individual modules with Pydantic-backed JSON schemas |
 | Sandbox execution | Scaffolded, not integrated |
-| File inspection and editing | Not yet implemented |
+| File inspection and editing | Read-only repository inspection is implemented through tool modules; broader mutation tooling is still future work |
 
 ## Requirements
 
@@ -66,48 +66,65 @@ session.
 
 ## How it works
 
-1. `harness.cli` resolves the current working directory and loads `.env` values.
-2. `harness.cli` reads goals in an interactive loop and starts one agent run per goal.
+1. `src/harness/cli.py` resolves the current working directory and loads `.env` values.
+2. `src/harness/cli.py` reads goals in an interactive loop and starts one agent run per goal.
 3. The agent builds a system prompt containing the workspace path and operating rules.
 4. The loop sends the prompt to Groq for up to 15 iterations.
 5. Recent history is retained in a sliding six-message window.
-6. Structured tool calls are dispatched through the tool registry and their observations are returned to the model.
+6. Tool modules under `src/harness/tools/` are auto-discovered and passed to the model as callable Groq functions.
 
 The persona and response contract are documented in [`SYSTEM.md`](SYSTEM.md). The sample HAL phrases and trigger keywords are stored in [`data/dave.json`](data/dave.json).
 
-## Implementing the first real tool
+## Tool architecture
 
-The next useful milestone is a read-only repository inspection tool. It would give the model a safe, testable capability before file mutation or shell execution is introduced.
+The tool layer is intentionally split into small modules so each capability can be defined, tested, and expanded independently.
 
-### Recommended sequence
+- `src/harness/tools/__init__.py` discovers modules that expose `GROQ_TOOL_SPEC` and `execute`, then exports them to the agent.
+- Each tool has a Pydantic schema that defines the JSON arguments the model is allowed to emit.
+- `src/harness/agent.py` sends the discovered specs to Groq and dispatches model output using the matching execution function.
 
-1. **Define a tool schema** in `src/harness/tools/blueprints.py`.
-   - Start with a tool such as `list_files` or `read_file`.
-   - Describe its name, purpose, and JSON arguments in the format expected by Groq tool calling.
-   - Constrain paths to the target workspace and define useful error responses.
+A good rule of thumb is: the schema describes the contract, and the `execute()` function enforces the runtime behavior.
 
-2. **Implement the function** in a dedicated module under `src/harness/tools/`.
-   - Accept the workspace path explicitly.
-   - Resolve paths safely and reject paths outside the workspace.
-   - Return bounded, serializable text rather than raw exceptions.
+## Provisioning a new tool
 
-3. **Register the function** in `src/harness/tools/registry.py`.
-   - Map the schema name to its Python implementation.
-   - Reject unknown tool names.
-   - Validate and parse JSON arguments before dispatch.
+Create a new Python module under `src/harness/tools/` and define a schema using `pydantic.BaseModel`.
 
-4. **Wire the tool into `agent.py`.
-   - Replace `available_tools = []` with the exported tool schemas.
-   - Uncomment the `tools=available_tools` argument in the Groq request.
-   - Replace the `"Tool outputs placeholder."` value with `execute_tool(...)`.
-   - Preserve the tool-call ID when appending the observation to history.
+```python
+from __future__ import annotations
 
-5. **Verify the execution loop.**
-   - Add unit tests for valid paths, invalid paths, missing arguments, and unknown tools.
-   - Test that a tool result is sent back to the model with the correct tool-call ID.
-   - Add an integration test using a fake client so tests do not require a live API key.
+from pydantic import BaseModel, Field
 
-After a read-only tool is reliable, add file editing and command execution separately. Each should have explicit safety rules, bounded output, clear failure messages, and tests before being exposed to the model.
+
+class MyToolSchema(BaseModel):
+    target: str = Field(..., description="Path or identifier the tool should inspect.")
+    limit: int = Field(default=25, description="Maximum number of results to return.")
+
+
+GROQ_TOOL_SPEC = {
+    "type": "function",
+    "function": {
+        "name": "my_tool",
+        "description": "Inspect a target and return a bounded result summary.",
+        "parameters": MyToolSchema.model_json_schema(),
+    },
+}
+
+
+def execute(target: str, limit: int = 25) -> str:
+    """Perform the tool's work and return a serializable string result."""
+    items = ["example", "result", "record"]
+    return "\n".join(items[:limit]) if target else "No target provided."
+```
+
+The important parts are:
+
+1. Use a `BaseModel` so the tool contract is explicit and validated.
+2. Put the schema in `GROQ_TOOL_SPEC["function"]["parameters"]` using `model_json_schema()`.
+3. Keep the `execute()` function signature aligned with the model schema fields.
+4. Return plain text or bounded structured output, never raw exceptions.
+5. Keep the tool read-only unless you intentionally want mutation or shell behavior.
+
+If you add a tool module with a `GROQ_TOOL_SPEC` and `execute` function, the package loader will pick it up automatically. That means new capabilities can be added without rewriting the central dispatch code.
 
 ## Repository layout
 
@@ -123,8 +140,9 @@ hal-9000/
 │   ├── sandbox/
 │   │   └── executor.py        # Planned execution layer
 │   └── tools/
-│       ├── blueprints.py      # Planned tool schemas
-│       └── registry.py         # Planned tool dispatch
+│       ├── __init__.py        # Discovers tool modules and exports available specs
+│       ├── git_lister.py      # Git-oriented repository inspection helper
+│       └── git_viewer.py      # Git-oriented file inspection helper
 ├── SYSTEM.md                  # Persona and interaction rules
 ├── Makefile
 ├── pyproject.toml
@@ -142,3 +160,4 @@ This project is intentionally small and framework-light. The current implementat
 - testing agent workflows without depending on a live model
 
 Contributions should keep the execution boundary explicit and should not treat the HAL persona as a security mechanism.
+

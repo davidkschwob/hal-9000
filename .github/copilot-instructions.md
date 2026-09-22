@@ -30,14 +30,15 @@
   target workspace, retains only the last six history messages, and makes at
   most 15 model iterations. A response without tool calls completes that goal;
   the CLI then returns to its prompt.
-- Model tool schemas live in `src/harness/tools/blueprints.py`; implementations
-  are registered in `src/harness/tools/registry.py`. Tool calls are decoded from
-  JSON, dispatched with the target workspace, and returned as `role: tool`
-  messages using the model-provided tool-call ID.
-- The implemented `list_files` tool runs `git ls-files` in the target workspace
-  and deliberately raises a `RuntimeError` for Git failures, so a non-Git
-  directory is not silently treated as empty. HAL-themed fallback/error text is
-  loaded from `data/dave.json` when available.
+- Tool modules live under `src/harness/tools/` and are auto-discovered by
+  `src/harness/tools/__init__.py` via modules exposing `GROQ_TOOL_SPEC` and
+  `execute`. Tool calls are decoded from JSON, dispatched with the target
+  workspace, and returned as `role: tool` messages using the model-provided
+  tool-call ID.
+- Tool definitions should be created with `pydantic.BaseModel` schemas and a
+  matching `execute()` implementation. Keep the runtime behavior bounded and
+  serializable; HAL-themed fallback/error text is loaded from `data/dave.json`
+  when available.
 - `src/harness/sandbox/` is scaffolded and exported, but is not wired into the
   current agent loop. File editing and shell execution are not available tools.
 - `SYSTEM.md` at the repository root is the standalone prompt/example, while
@@ -49,10 +50,12 @@
 - Keep the execution boundary explicit: tools receive the workspace path,
   validate their arguments, return bounded serializable text, and must not
   assume the process's current directory is the target.
-- When adding a tool, update all three surfaces: its schema in
-  `tools/blueprints.py`, its implementation, and `_TOOL_REGISTRY` in
-  `tools/registry.py`. Reject unknown tools and unexpected arguments rather than
-  silently ignoring them.
+- When adding a tool, create or update a module under `src/harness/tools/` that
+  exposes `GROQ_TOOL_SPEC` and `execute`, and ensure it is discoverable via
+  `src/harness/tools/__init__.py`. Define the JSON contract with
+  `pydantic.BaseModel` and `model_json_schema()`, then keep the runtime
+  implementation aligned with that schema. Reject unknown tools and unexpected
+  arguments rather than silently ignoring them.
 - Preserve the Groq tool-call message shape, especially `tool_call_id`, when
   feeding observations back into the conversation.
 - Keep model-independent tests possible by injecting or faking the client;

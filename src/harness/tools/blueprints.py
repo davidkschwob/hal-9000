@@ -14,5 +14,19 @@ tool_blueprints = [
             },
             "strict": True
         },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Reads the text contents of a specific file path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filepath": {"type": "string", "description": "The path to the file."}
+                },
+                "required": ["filepath"]
+            }
+        }
     }
 ]

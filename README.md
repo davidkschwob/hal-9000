@@ -59,16 +59,19 @@ Run the command from the repository you want the harness to work with:
 ask-hal
 ```
 
-HAL prints the target workspace, asks for a coding goal, and sends the goal to the model. The current agent loop can display model output and recognize tool-call responses, but it returns a placeholder observation instead of executing a real tool.
+HAL prints the target workspace and opens an interactive prompt. Enter a coding
+goal to run one bounded agent conversation, then enter another goal when it
+finishes. Blank inputs are ignored; `exit`, `quit`, EOF, or Ctrl-C ends the
+session.
 
 ## How it works
 
 1. `harness.cli` resolves the current working directory and loads `.env` values.
-2. `harness.agent` initializes the LLM client and prompts for a development goal.
+2. `harness.cli` reads goals in an interactive loop and starts one agent run per goal.
 3. The agent builds a system prompt containing the workspace path and operating rules.
 4. The loop sends the prompt to Groq for up to 15 iterations.
 5. Recent history is retained in a sliding six-message window.
-6. Tool calls are detected, but execution is currently mocked.
+6. Structured tool calls are dispatched through the tool registry and their observations are returned to the model.
 
 The persona and response contract are documented in [`SYSTEM.md`](SYSTEM.md). The sample HAL phrases and trigger keywords are stored in [`data/dave.json`](data/dave.json).
 

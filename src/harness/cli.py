@@ -15,4 +15,20 @@ def main():
         print(f"WARNING: no .env file found at {target_workspace}")
         print("Defaulting to GROQ_API_KEY in system env")
 
-    agent_loop(workspace_path=target_workspace)
+    print("HAL-9000 interactive session ready. Type 'exit' or 'quit' to stop.")
+    try:
+        while True:
+            try:
+                goal = input("\nask-hal> ")
+            except EOFError:
+                print()
+                break
+
+            if goal.strip().lower() in {"exit", "quit"}:
+                break
+            if not goal.strip():
+                continue
+
+            agent_loop(workspace_path=target_workspace, goal=goal)
+    except KeyboardInterrupt:
+        print()

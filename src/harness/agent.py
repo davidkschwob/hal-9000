@@ -7,7 +7,7 @@ import importlib.resources
 from pathlib import Path
 
 from .brain import get_llm_client
-from .brain import hal_stream_print
+from .output import OutputMode, render
 from .tools import ALL_GROQ_TOOLS, TOOL_REGISTRY
 
 
@@ -87,7 +87,7 @@ def agent_loop(workspace_path: str, goal: str):
         full_history.append(_serialize_message(assistant_message))
 
         if assistant_message.content:
-            hal_stream_print(assistant_message.content)
+            render(assistant_message.content,mode=OutputMode.HAL)
 
         if getattr(assistant_message, "tool_calls", None):
             for tool_call in assistant_message.tool_calls:
@@ -105,8 +105,6 @@ def agent_loop(workspace_path: str, goal: str):
                 except (ValueError, TypeError, json.JSONDecodeError, RuntimeError) as exc:
                     # todo: add hal commentary
                     observation = f"Tool failure: {exc}"
-
-                hal_stream_print(observation)
 
                 full_history.append(
                     {

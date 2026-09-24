@@ -7,6 +7,7 @@ import importlib.resources
 from pathlib import Path
 
 from .brain import get_llm_client
+from .brain import hal_stream_print
 from .tools import ALL_GROQ_TOOLS, TOOL_REGISTRY
 
 
@@ -32,20 +33,6 @@ def _serialize_message(message):
         return message.dict(exclude_none=True)
     return message
     
-
-def _hal_stream_print(text: str):
-    """Prints text in HAL-red with a slight deliberate pacing"""
-    RED = "\033[91m"
-    RESET = "\033[0m"
-    sys.stdout.write(RED)
-    for l in (textwrap.wrap(text,50)):
-        for char in l:
-            sys.stdout.write(char)
-            sys.stdout.flush()
-            time.sleep(0.015) 
-        sys.stdout.write("\n")
-    sys.stdout.write(RESET + "\n")
-
     
 def agent_loop(workspace_path: str, goal: str):
     """Run one bounded agent conversation against the target workspace."""
@@ -100,13 +87,18 @@ def agent_loop(workspace_path: str, goal: str):
         full_history.append(_serialize_message(assistant_message))
 
         if assistant_message.content:
-            _hal_stream_print(assistant_message.content)
+            hal_stream_print(assistant_message.content)
 
         if getattr(assistant_message, "tool_calls", None):
             for tool_call in assistant_message.tool_calls:
-                print(f"🔌 Action: Invoking '{tool_call.function.name}'...")
                 function_name = tool_call.function.name
                 raw_arguments = json.loads(tool_call.function.arguments)
+                print(f"🔌 Action: Invoke '{function_name} ({raw_arguments})'")
+                auth = input("Type Y/N to proceed: [Y]")
+                if auth.upper() != 'Y':
+                    print("[BREAK]")
+                    break
+
                 fn = TOOL_REGISTRY.get(function_name)
                 try:
                     observation = fn(**raw_arguments)
@@ -114,7 +106,7 @@ def agent_loop(workspace_path: str, goal: str):
                     # todo: add hal commentary
                     observation = f"Tool failure: {exc}"
 
-                _hal_stream_print(observation)
+                hal_stream_print(observation)
 
                 full_history.append(
                     {

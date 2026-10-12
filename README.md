@@ -2,7 +2,7 @@
 
 HAL-9000 is an educational Python agent harness for experimenting with an LLM-driven coding assistant in a local Git repository.
 
-The project combines a Groq chat client, a bounded agent loop, a HAL-inspired system prompt, and an in-progress tool layer. It is a prototype rather than a production-ready autonomous coding agent.
+The project combines a Groq chat client, a bounded one-response-per-turn agent loop, a HAL-inspired system prompt, and a small tool layer. It is a prototype rather than a production-ready autonomous coding agent.
 
 ## Status
 
@@ -12,9 +12,10 @@ The harness is working as a small, modular tool-enabled agent loop. Tool definit
 | --- | --- |
 | Python package and CLI | Available through the `ask-hal` command |
 | LLM client | Groq client configured from environment variables |
-| Agent loop | Bounded to 15 iterations with a six-message history window |
+| Agent loop | Fetches one complete response per turn, splits explicit tags, and is bounded to 15 iterations with a six-message history window |
 | Tool discovery | Modules under `src/harness/tools/` are auto-discovered via `__init__.py` |
-| Tool implementations | Split into individual modules with Pydantic-backed JSON schemas |
+| Tool implementations | Split into individual modules with Pydantic-backed JSON schemas; `<tool name="...">JSON arguments</tool>` calls require interactive approval |
+| Response parsing and output | Splits `<thinking>`, `<hal>`, `<output>`, and `<tool>` tags after each complete response |
 | Sandbox execution | Scaffolded, not integrated |
 | File inspection and editing | Read-only repository inspection is implemented through tool modules; broader mutation tooling is still future work |
 
@@ -68,12 +69,13 @@ session.
 
 1. `src/harness/cli.py` resolves the current working directory and loads `.env` values.
 2. `src/harness/cli.py` reads goals in an interactive loop and starts one agent run per goal.
-3. The agent builds a system prompt containing the workspace path and operating rules.
-4. The loop sends the prompt to Groq for up to 15 iterations.
-5. Recent history is retained in a sliding six-message window.
-6. Tool modules under `src/harness/tools/` are auto-discovered and passed to the model as callable Groq functions.
+3. The agent loads the packaged system prompt and builds a request containing the workspace path and operating rules.
+4. For up to 15 iterations, it requests one complete Groq response, then splits it into explicitly tagged sections.
+5. Textual tool tags contain a tool name and JSON arguments; each call is confirmed before execution, and results are added to the next turn's conversation.
+6. The last six conversation messages are retained between turns.
+7. Tool names, descriptions, and argument schemas are included in the system prompt.
 
-The persona and response contract are documented in [`SYSTEM.md`](SYSTEM.md). The sample HAL phrases and trigger keywords are stored in [`data/dave.json`](data/dave.json).
+The persona and response contract are documented in [`SYSTEM.md`](SYSTEM.md) and mirrored in the packaged [`src/harness/SYSTEM.md`](src/harness/SYSTEM.md). The sample HAL phrases and trigger keywords are stored in [`data/dave.json`](data/dave.json).
 
 ## Tool architecture
 
@@ -81,7 +83,8 @@ The tool layer is intentionally split into small modules so each capability can 
 
 - `src/harness/tools/__init__.py` discovers modules that expose `GROQ_TOOL_SPEC` and `execute`, then exports them to the agent.
 - Each tool has a Pydantic schema that defines the JSON arguments the model is allowed to emit.
-- `src/harness/agent.py` sends the discovered specs to Groq and dispatches model output using the matching execution function.
+- `src/harness/agent.py` includes the discovered tool schemas in the prompt, parses each completed response, and dispatches tagged calls using the matching execution function.
+- `src/harness/output.py` renders each parsed section after the response is complete.
 
 A good rule of thumb is: the schema describes the contract, and the `execute()` function enforces the runtime behavior.
 
@@ -134,7 +137,8 @@ hal-9000/
 │   └── dave.json              # HAL-style phrases and trigger keywords
 ├── src/harness/
 │   ├── cli.py                 # Console entry point
-│   ├── agent.py               # Bounded LLM/ReAct-style loop
+│   ├── agent.py               # Bounded one-shot LLM/tool loop
+│   ├── output.py              # HAL, thinking, and formatted response output
 │   ├── brain/
 │   │   └── client.py          # Groq client initialization
 │   ├── sandbox/
@@ -144,6 +148,7 @@ hal-9000/
 │       ├── git_lister.py      # Git-oriented repository inspection helper
 │       └── git_viewer.py      # Git-oriented file inspection helper
 ├── SYSTEM.md                  # Persona and interaction rules
+├── tests/                     # Model-independent response/loop tests
 ├── Makefile
 ├── pyproject.toml
 └── README.md
@@ -161,3 +166,8 @@ This project is intentionally small and framework-light. The current implementat
 
 Contributions should keep the execution boundary explicit and should not treat the HAL persona as a security mechanism.
 
+Run the model-independent tests from the repository root with:
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -v
+```

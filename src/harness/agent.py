@@ -1,46 +1,91 @@
+from __future__ import annotations
+
+import importlib.resources
 import json
 import os
+import re
 import sys
-import time
-import textwrap
-import importlib.resources
-from pathlib import Path
+from collections.abc import Iterator
+from typing import Any
 
 from .brain import get_llm_client
 from .output import OutputMode, render
 from .tools import ALL_GROQ_TOOLS, TOOL_REGISTRY
 
 
+_MAX_ITERATIONS = 15
+_HISTORY_LIMIT = 6
+_RESPONSE_TAG = re.compile(
+    r"<(?P<section>thinking|hal|output)>(?P<section_text>.*?)"
+    r"</(?P=section)>|<tool name=\"(?P<tool_name>[^\"]+)\">"
+    r"(?P<tool_arguments>.*?)</tool>",
+    re.DOTALL,
+)
+
+
 def _load_system_prompt() -> str:
     try:
-        ref = importlib.resources.files("harness").joinpath("SYSTEM.md")
-        system_md = ref.read_text(encoding="utf-8")
-        return system_md
-    except:
-        print(
-              "[WARN] SYSTEM.md not loaded from module resource path. "
-              "Defaulting to a generic prompt."
-              )
-        return(
-            "Your are a helpful coding agent. Inspect the target repository "
-            "carefully and explain failures clearly."
-            )
+        resource = importlib.resources.files("harness").joinpath("SYSTEM.md")
+        return resource.read_text(encoding="utf-8")
+    except (OSError, ModuleNotFoundError, TypeError) as exc:
+        raise RuntimeError(f"Unable to load the packaged SYSTEM.md prompt: {exc}") from exc
 
-def _serialize_message(message):
-    if hasattr(message,"model_dump"):
-        return message.model_dump(exclude_none=True)
-    if hasattr(message,"dict"):
-        return message.dict(exclude_none=True)
-    return message
-    
-    
-def agent_loop(workspace_path: str, goal: str):
-    """Run one bounded agent conversation against the target workspace."""
-    # todo: add hal commentary
+
+def _parse_response(text: str) -> Iterator[tuple[str, str, str | None]]:
+    """Yield tagged sections and preserve text outside recognized tags."""
+    position = 0
+    for match in _RESPONSE_TAG.finditer(text):
+        if match.start() > position:
+            yield "hal", text[position : match.start()], None
+        if match.group("section") is not None:
+            yield match.group("section"), match.group("section_text"), None
+        else:
+            yield "tool", match.group("tool_arguments"), match.group("tool_name")
+        position = match.end()
+    if position < len(text):
+        yield "hal", text[position:], None
+
+
+def _execute_tool(name: str, argument_text: str) -> str:
+    try:
+        arguments = json.loads(argument_text)
+    except json.JSONDecodeError as exc:
+        return f"Tool failure: invalid JSON for '{name}': {exc}"
+    if not isinstance(arguments, dict):
+        return f"Tool failure: arguments for '{name}' must be a JSON object"
+
+    function = TOOL_REGISTRY.get(name)
+    if function is None:
+        return f"Tool failure: unknown tool '{name}'"
+
+    print(f"\n🔌 Action: Invoke '{name} ({arguments})'")
+    try:
+        authorization = input("Type Y/N to proceed: [Y] ").strip().upper()
+    except (EOFError, KeyboardInterrupt):
+        authorization = "N"
+    if authorization not in {"", "Y"}:
+        return "Tool execution declined by the operator."
+
+    try:
+        result = function(**arguments)
+    except (ValueError, TypeError, RuntimeError, OSError) as exc:
+        return f"Tool failure: {exc}"
+    if not isinstance(result, str):
+        return f"Tool failure: '{name}' returned a non-text result."
+    return result
+
+
+def _section_mode(section: str) -> OutputMode:
+    if section == "thinking":
+        return OutputMode.THINKING
+    if section == "output":
+        return OutputMode.MARKDOWN
+    return OutputMode.HAL
+
+
+def agent_loop(workspace_path: str, goal: str) -> None:
+    """Run one bounded, one-response-per-turn agent conversation."""
     print(f"🤖 HAL-9000 Engine online. Target workspace: {workspace_path}")
-
-    target_model = os.environ.get("GROQ_MODEL")
-    # max_tokens = os.environ.get("GROQ_MAX_TOKENS")
 
     try:
         client = get_llm_client()
@@ -49,33 +94,25 @@ def agent_loop(workspace_path: str, goal: str):
         print(f"❌ Initialization Error: {exc}")
         sys.exit(1)
 
-    full_history = []
-    base_messages = [
+    function_specs = [spec["function"] for spec in ALL_GROQ_TOOLS]
+    system_prompt += (
+        "\n\nAvailable tools and their JSON argument schemas:\n"
+        + json.dumps(function_specs, indent=2)
+    )
+    messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt},
         {
             "role": "user",
-            "content": (
-                f"Execute this goal step-by-step in {workspace_path}: {goal}"
-            ),
+            "content": f"Execute this goal step-by-step in {workspace_path}: {goal}",
         },
     ]
 
-    is_running = True
-    iteration = 0
-    max_iterations = 15
-
-    while is_running and iteration < max_iterations:
-        iteration += 1
-        # todo: add hal commentary
-        print(f"\n--- 🔄 [Turn {iteration}/{max_iterations}] Reasoning Phase ---")
-        active_prompt = list(base_messages)
-        active_prompt.extend(full_history[-6:])
-
+    for iteration in range(1, _MAX_ITERATIONS + 1):
+        print(f"\n--- 🔄 [Turn {iteration}/{_MAX_ITERATIONS}] ---")
         try:
             response = client.chat.completions.create(
-                messages=active_prompt,
-                model=target_model,
-                tools=ALL_GROQ_TOOLS,
+                messages=messages,
+                model=os.environ.get("GROQ_MODEL"),
                 max_tokens=512,
                 temperature=0.2,
             )
@@ -83,40 +120,32 @@ def agent_loop(workspace_path: str, goal: str):
             print(f"❌ Groq API Communication Failure: {exc}")
             break
 
-        assistant_message = response.choices[0].message
-        full_history.append(_serialize_message(assistant_message))
+        try:
+            content = response.choices[0].message.content
+        except (AttributeError, IndexError, KeyError, TypeError) as exc:
+            print(f"❌ Groq response did not contain a message: {exc}")
+            break
+        if not isinstance(content, str) or not content:
+            print("❌ Groq returned an empty response.")
+            break
 
-        if assistant_message.content:
-            render(assistant_message.content,mode=OutputMode.HAL)
+        messages.append({"role": "assistant", "content": content})
+        tool_results: list[str] = []
+        for section, text, tool_name in _parse_response(content):
+            if section == "tool":
+                result = _execute_tool(tool_name or "", text)
+                tool_results.append(f"Tool '{tool_name}' result:\n{result}")
+            elif text:
+                render(text, _section_mode(section))
 
-        if getattr(assistant_message, "tool_calls", None):
-            for tool_call in assistant_message.tool_calls:
-                function_name = tool_call.function.name
-                raw_arguments = json.loads(tool_call.function.arguments)
-                print(f"🔌 Action: Invoke '{function_name} ({raw_arguments})'")
-                auth = input("Type Y/N to proceed: [Y]")
-                if auth.upper() != 'Y':
-                    print("[BREAK]")
-                    break
-
-                fn = TOOL_REGISTRY.get(function_name)
-                try:
-                    observation = fn(**raw_arguments)
-                except (ValueError, TypeError, json.JSONDecodeError, RuntimeError) as exc:
-                    # todo: add hal commentary
-                    observation = f"Tool failure: {exc}"
-
-                full_history.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": tool_call.function.name,
-                        "content": observation,
-                    }
-                )
-        else:
-            is_running = False
-
-    if iteration >= max_iterations:
-        # todo: add hal commentary
+        if not tool_results:
+            break
+        messages.append(
+            {
+                "role": "user",
+                "content": "\n\n".join(tool_results),
+            }
+        )
+        messages = messages[:2] + messages[2:][-_HISTORY_LIMIT:]
+    else:
         print("\n⚠️ Loop halted automatically: Reached maximum safety iteration depth.")
